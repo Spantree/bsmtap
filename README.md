@@ -77,6 +77,30 @@ sudo ./bsmtap
 - `SIGHUP` - reopen output file (for log rotation)
 - `SIGTERM` / `SIGINT` - graceful shutdown
 
+### Log rotation
+
+bsmtap supports log rotation via `SIGHUP`. It writes its PID to the file specified by `BSMTAP_PID` (default `/var/run/bsmtap.pid`) so that log rotation tools can signal it.
+
+**With newsyslog** (macOS built-in), add to `/etc/newsyslog.d/bsmtap.conf`:
+
+```
+# logfilename                    [owner:group] mode count size(KB) when flags [/pid_file]
+/var/log/bsmtap/audit.jsonl       root:wheel    640  5     10240    *    N     /var/run/bsmtap.pid
+```
+
+The `N` flag keeps rotated files uncompressed (queryable with `jq`). newsyslog will:
+
+1. Rename `audit.jsonl` to `audit.jsonl.0`
+2. Send `SIGHUP` to the PID in `/var/run/bsmtap.pid`
+3. bsmtap closes the old file descriptor and opens a fresh `audit.jsonl`
+
+**Manual rotation:**
+
+```bash
+mv /var/log/bsmtap/audit.jsonl /var/log/bsmtap/audit.jsonl.1
+kill -HUP $(cat /var/run/bsmtap.pid)
+```
+
 ## Supported BSM tokens
 
 | Token | ID | Description |
