@@ -33,18 +33,9 @@ jobs:
         run: bun test
 
   build:
-    name: Build (${{ matrix.os }})
+    name: Build
     needs: test
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - os: darwin-arm64
-            target: bun-darwin-arm64
-            artifact: bsmtap-darwin-arm64
-          - os: darwin-x64
-            target: bun-darwin-x64
-            artifact: bsmtap-darwin-x64
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
 
@@ -56,19 +47,16 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build standalone binary
-        run: |
-          bun build --compile src/main.ts \
-            --target ${{ matrix.target }} \
-            --outfile ${{ matrix.artifact }}
+        run: bun build --compile src/main.ts --outfile bsmtap
 
       - name: Package tarball
-        run: tar -czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
+        run: tar -czf bsmtap-darwin-arm64.tar.gz bsmtap
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          name: bsmtap-darwin-arm64
+          path: bsmtap-darwin-arm64.tar.gz
 
   release:
     name: Create release
