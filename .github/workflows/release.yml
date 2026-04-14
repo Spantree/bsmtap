@@ -49,6 +49,9 @@ jobs:
       - name: Build standalone binary
         run: bun build --compile src/main.ts --outfile bsmtap
 
+      - name: Ad-hoc sign binary
+        run: codesign --force --sign - bsmtap
+
       - name: Package tarball
         run: tar -czf bsmtap-darwin-arm64.tar.gz bsmtap
 
