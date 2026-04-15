@@ -2,20 +2,14 @@
   "mcpServers": {
     "exa": {
       "command": "bunx",
-      "args": [
-        "-y",
-        "exa-mcp-server@3.2.0"
-      ],
+      "args": ["-y", "exa-mcp-server@3.2.0"],
       "env": {
         "EXA_API_KEY": "${EXA_API_KEY}"
       }
     },
     "ref": {
       "command": "bunx",
-      "args": [
-        "-y",
-        "ref-tools-mcp@3.0.3"
-      ],
+      "args": ["-y", "ref-tools-mcp@3.0.3"],
       "env": {
         "REF_API_KEY": "${REF_API_KEY}"
       }
@@ -32,10 +26,7 @@
     },
     "code-reasoning": {
       "command": "npx",
-      "args": [
-        "-y",
-        "github:feniix/code-reasoning#fix-strict-stdio-startup"
-      ]
+      "args": ["-y", "github:feniix/code-reasoning#fix-strict-stdio-startup"]
     },
     "serena": {
       "command": "uvx",
