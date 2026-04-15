@@ -2,3 +2,7 @@ node_modules/
 dist/
 bsmtap
 *.tar.gz
+.claude/settings.local.json
+.serena/cache/
+.serena/memories/
+.serena/project.local.yml
