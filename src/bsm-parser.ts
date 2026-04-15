@@ -31,6 +31,7 @@ const AUT_ATTR32 = 0x3e;
 const AUT_ATTR64 = 0x73;
 
 const TRAILER_MAGIC = 0xb105;
+const textDecoder = new TextDecoder();
 
 // --- Event name lookup (common AUE_* events) ---
 // Loaded lazily from /etc/security/audit_event if available, otherwise uses this fallback map.
@@ -130,7 +131,6 @@ export function parseRecord(buf: Uint8Array): AuditEvent {
     text: [],
     attributes: [],
     arguments: [],
-    raw: "",
   };
 
   // Record size is always at byte 1 (right after the 1-byte token ID) for all header types
@@ -373,7 +373,7 @@ function parseExecArgs(view: DataView, off: number, buf: Uint8Array, event: Audi
     if (pos >= buf.byteLength) break;
     const nulIdx = buf.indexOf(0, pos);
     if (nulIdx === -1 || nulIdx >= buf.byteLength) break;
-    event.execArgs.push(new TextDecoder().decode(buf.subarray(pos, nulIdx)));
+    event.execArgs.push(textDecoder.decode(buf.subarray(pos, nulIdx)));
     pos = nulIdx + 1;
   }
   return pos;
@@ -488,7 +488,7 @@ function formatIpv6(view: DataView, off: number): string {
 /** Decode a NUL-terminated length-prefixed string. Length includes the NUL byte. */
 function decodeString(buf: Uint8Array, off: number, len: number): string {
   if (len <= 1) return "";
-  return new TextDecoder().decode(buf.subarray(off, off + len - 1));
+  return textDecoder.decode(buf.subarray(off, off + len - 1));
 }
 
 // --- Stream record extraction ---
@@ -499,6 +499,7 @@ function decodeString(buf: Uint8Array, off: number, len: number): string {
  */
 export function extractRecords(buf: Uint8Array): { events: AuditEvent[]; consumed: number } {
   const events: AuditEvent[] = [];
+  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
   let offset = 0;
 
   while (offset < buf.byteLength) {
@@ -517,7 +518,6 @@ export function extractRecords(buf: Uint8Array): { events: AuditEvent[]; consume
       continue;
     }
 
-    const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
     const recordSize = view.getUint32(offset + 1, false);
 
     if (recordSize < 7 || recordSize > 1_048_576) {

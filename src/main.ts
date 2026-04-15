@@ -48,12 +48,13 @@ const reader = new AuditPipeReader({
   },
 });
 
+let shuttingDown = false;
+
 function shutdown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.error("[bsmtap] Shutting down...");
   reader.stop();
-  writer.close();
-  console.error("[bsmtap] Shutdown complete");
-  process.exit(0);
 }
 
 process.on("SIGTERM", shutdown);
@@ -63,8 +64,15 @@ process.on("SIGHUP", () => {
   writer.reopen();
 });
 
-reader.start().catch((err) => {
-  console.error(`[bsmtap] Fatal: ${err}`);
-  writer.close();
-  process.exit(1);
-});
+reader
+  .start()
+  .then(() => {
+    writer.close();
+    console.error("[bsmtap] Shutdown complete");
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error(`[bsmtap] Fatal: ${err}`);
+    writer.close();
+    process.exit(1);
+  });

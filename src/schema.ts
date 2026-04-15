@@ -1,4 +1,4 @@
-/** Structured representation of a macOS OpenBSM audit event, transformed from praudit -x XML output. */
+/** Structured representation of a macOS OpenBSM audit event, parsed from binary BSM tokens. */
 export interface AuditEvent {
   /** ISO 8601 timestamp of the event. */
   timestamp: string;
@@ -22,8 +22,6 @@ export interface AuditEvent {
   attributes: AuditAttribute[];
   /** Argument tokens (syscall arguments). */
   arguments: AuditArgument[];
-  /** Reserved for debugging (e.g. hex dump of original BSM record). */
-  raw: string;
 }
 
 export interface AuditSubject {
