@@ -49,8 +49,11 @@ jobs:
       - name: Build standalone binary
         run: bun build --compile src/main.ts --outfile bsmtap
 
-      - name: Verify binary signature
-        run: codesign -vv bsmtap
+      - name: Re-sign binary
+        run: |
+          codesign --remove-signature bsmtap
+          codesign --force --sign - bsmtap
+          codesign -vv bsmtap
 
       - name: Package tarball
         run: tar -czf bsmtap-darwin-arm64.tar.gz bsmtap
