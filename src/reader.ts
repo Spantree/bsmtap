@@ -1,14 +1,18 @@
 /**
  * Auditpipe reader — reads BSM binary records directly from /dev/auditpipe.
  *
- * Replaces the praudit spawn + XML parsing pipeline with direct binary reading.
+ * Uses fs.openSync + fs.readSync instead of Bun.file().stream() because
+ * Bun's file stream API doesn't work correctly with character devices
+ * like /dev/auditpipe (it blocks forever on the first read).
  */
 
+import { closeSync, openSync, readSync } from "node:fs";
 import { extractRecords } from "./bsm-parser.ts";
 import type { AuditEvent } from "./schema.ts";
 
 const DEFAULT_AUDITPIPE = "/dev/auditpipe";
-const MAX_BUFFER = 1_048_576; // 1 MB
+const READ_BUFFER_SIZE = 65_536; // 64 KB per read
+const MAX_BUFFER = 1_048_576; // 1 MB accumulated
 
 export interface ReaderOptions {
   auditpipePath?: string;
@@ -18,6 +22,7 @@ export interface ReaderOptions {
 
 export class AuditPipeReader {
   private running = false;
+  private fd: number | null = null;
   private readonly opts: Required<ReaderOptions>;
 
   constructor(opts: ReaderOptions) {
@@ -32,20 +37,22 @@ export class AuditPipeReader {
     this.running = true;
     console.error(`[bsmtap] Opening ${this.opts.auditpipePath}`);
 
-    const file = Bun.file(this.opts.auditpipePath);
-    const stream = file.stream();
-    const reader = stream.getReader();
+    this.fd = openSync(this.opts.auditpipePath, "r");
+    const readBuf = Buffer.alloc(READ_BUFFER_SIZE);
     let buffer = new Uint8Array(0) as Uint8Array<ArrayBufferLike>;
 
     try {
-      for (;;) {
-        if (!this.running) break;
-
-        const { done, value } = await reader.read();
-        if (done) break;
+      while (this.running) {
+        // readSync blocks until auditpipe has data — this is expected
+        // for character devices. It returns when audit events arrive.
+        const bytesRead = readSync(this.fd, readBuf);
+        if (bytesRead === 0) {
+          // EOF — device closed (shouldn't happen for auditpipe)
+          break;
+        }
 
         // Append new data to buffer
-        buffer = concat(buffer, value);
+        buffer = concat(buffer, readBuf.subarray(0, bytesRead));
 
         // Extract and process complete records
         const { events, consumed } = extractRecords(buffer);
@@ -70,12 +77,28 @@ export class AuditPipeReader {
         this.opts.onError(`Read error: ${err}`);
       }
     } finally {
-      reader.releaseLock();
+      if (this.fd !== null) {
+        try {
+          closeSync(this.fd);
+        } catch {
+          // fd may already be closed
+        }
+        this.fd = null;
+      }
     }
   }
 
   stop(): void {
     this.running = false;
+    // Close the fd to unblock the readSync call
+    if (this.fd !== null) {
+      try {
+        closeSync(this.fd);
+      } catch {
+        // fd may already be closed
+      }
+      this.fd = null;
+    }
   }
 }
 
