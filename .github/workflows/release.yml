@@ -58,11 +58,16 @@ jobs:
       - name: Package tarball
         run: tar -czf bsmtap-darwin-arm64.tar.gz bsmtap
 
+      - name: Generate checksum
+        run: shasum -a 256 bsmtap-darwin-arm64.tar.gz > bsmtap-darwin-arm64.tar.gz.sha256
+
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: bsmtap-darwin-arm64
-          path: bsmtap-darwin-arm64.tar.gz
+          path: |
+            bsmtap-darwin-arm64.tar.gz
+            bsmtap-darwin-arm64.tar.gz.sha256
 
   release:
     name: Create release
@@ -84,4 +89,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          gh release upload "$TAG" artifacts/*.tar.gz --clobber
+          gh release upload "$TAG" artifacts/*.tar.gz artifacts/*.sha256 --clobber
