@@ -1,5 +1,31 @@
+import pkg from "../package.json";
 import { AuditPipeReader } from "./reader.ts";
 import { JsonLineFileWriter } from "./writer.ts";
+
+const args = process.argv.slice(2);
+
+if (args.includes("--help") || args.includes("-h")) {
+  console.log(`bsmtap v${pkg.version} — ${pkg.description}
+
+Taps macOS OpenBSM audit events and streams them as JSON Lines.
+
+Usage: bsmtap [options]
+
+Options:
+  -h, --help       Show this help message
+  -v, --version    Show version number
+
+Environment variables:
+  BSMTAP_OUTPUT    Output file path (default: /var/log/bsmtap/audit.jsonl)
+  BSMTAP_PID       PID file path (default: /var/run/bsmtap.pid)
+  AUDITPIPE_PATH   Audit pipe device (default: /dev/auditpipe)`);
+  process.exit(0);
+}
+
+if (args.includes("--version") || args.includes("-v")) {
+  console.log(pkg.version);
+  process.exit(0);
+}
 
 const OUTPUT_PATH = process.env.BSMTAP_OUTPUT ?? "/var/log/bsmtap/audit.jsonl";
 const PID_PATH = process.env.BSMTAP_PID ?? "/var/run/bsmtap.pid";
