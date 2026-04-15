@@ -42,7 +42,7 @@ Each line is a JSON object:
 
 ## Requirements
 
-- macOS (Apple Silicon or Intel)
+- macOS (Apple Silicon)
 - [Bun](https://bun.sh) runtime
 - Root privileges (`/dev/auditpipe` requires root)
 - `auditd` enabled and configured
