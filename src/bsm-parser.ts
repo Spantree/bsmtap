@@ -394,6 +394,7 @@ function parseExecArgs(view: DataView, off: number, buf: Uint8Array, event: Audi
 
 // --- Data token parser ---
 
+// Byte sizes indexed by OpenBSM basic_unit: AUR_BYTE=0(1), AUR_SHORT=1(2), AUR_INT32=2(4), AUR_INT64=3(8)
 const DATA_UNIT_SIZES = [1, 2, 4, 8] as const;
 
 function parseData(view: DataView, off: number, buf: Uint8Array): number {
