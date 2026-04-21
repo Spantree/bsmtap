@@ -7,7 +7,7 @@
  * Reference: openbsm/openbsm bsm_token.h, bsm_io.c
  */
 
-import type { AuditArgument, AuditAttribute, AuditEvent, AuditReturn, AuditSubject } from "./schema.ts";
+import type { AuditArgument, AuditAttribute, AuditEvent, AuditIdentity, AuditReturn, AuditSubject } from "./schema.ts";
 
 // --- Token type IDs ---
 
@@ -27,8 +27,11 @@ const AUT_TEXT = 0x28;
 const AUT_EXEC_ARGS = 0x3c;
 const AUT_ARG32 = 0x2d;
 const AUT_ARG64 = 0x71;
+const AUT_DATA = 0x21;
+const AUT_IN_ADDR = 0x2a;
 const AUT_ATTR32 = 0x3e;
 const AUT_ATTR64 = 0x73;
+const AUT_IDENTITY = 0xed;
 
 const TRAILER_MAGIC = 0xb105;
 const textDecoder = new TextDecoder();
@@ -131,6 +134,7 @@ export function parseRecord(buf: Uint8Array): AuditEvent {
     text: [],
     attributes: [],
     arguments: [],
+    identity: null,
   };
 
   // Record size is always at byte 1 (right after the 1-byte token ID) for all header types
@@ -178,6 +182,12 @@ export function parseRecord(buf: Uint8Array): AuditEvent {
         case AUT_TEXT:
           offset = parseText(view, offset, buf, event);
           break;
+        case AUT_DATA:
+          offset = parseData(view, offset, buf);
+          break;
+        case AUT_IN_ADDR:
+          offset = offset + 4;
+          break;
         case AUT_EXEC_ARGS:
           offset = parseExecArgs(view, offset, buf, event);
           break;
@@ -192,6 +202,9 @@ export function parseRecord(buf: Uint8Array): AuditEvent {
           break;
         case AUT_ATTR64:
           offset = parseAttr64(view, offset, event);
+          break;
+        case AUT_IDENTITY:
+          offset = parseIdentity(view, offset, buf, event);
           break;
         case AUT_TRAILER:
           offset = parseTrailer(view, offset, recordSize);
@@ -379,6 +392,22 @@ function parseExecArgs(view: DataView, off: number, buf: Uint8Array, event: Audi
   return pos;
 }
 
+// --- Data token parser ---
+
+// Byte sizes indexed by OpenBSM basic_unit: AUR_BYTE=0(1), AUR_SHORT=1(2), AUR_INT32=2(4), AUR_INT64=3(8)
+const DATA_UNIT_SIZES = [1, 2, 4, 8] as const;
+
+function parseData(view: DataView, off: number, buf: Uint8Array): number {
+  // how_to_print(1) + basic_unit(1) + unit_count(1) + data(variable)
+  const basicUnit = view.getUint8(off + 1);
+  const unitCount = view.getUint8(off + 2);
+  // Fallback to 1-byte units for unrecognized basicUnit values (defensive)
+  const unitSize = DATA_UNIT_SIZES[basicUnit] ?? 1;
+  const end = off + 3 + unitCount * unitSize;
+  if (end > buf.byteLength) return buf.byteLength;
+  return end;
+}
+
 // --- Argument parsers ---
 
 function parseArg32(view: DataView, off: number, buf: Uint8Array, event: AuditEvent): number {
@@ -428,6 +457,36 @@ function readAttrFields(view: DataView, off: number, devSize: number): AuditAttr
     nodeid: String(nodeid),
     device: String(device),
   };
+}
+
+// --- Identity parser (Apple AUT_IDENTITY 0xed) ---
+
+function parseIdentity(view: DataView, off: number, buf: Uint8Array, event: AuditEvent): number {
+  // signer_type(4) + signing_id_len(2) + signing_id(n) + truncated(1) +
+  // team_id_len(2) + team_id(n) + truncated(1) + cdhash_len(2) + cdhash(n)
+  if (off + 6 > buf.byteLength) return buf.byteLength;
+  const signerType = view.getUint32(off, false);
+  const signingIdLen = view.getUint16(off + 4, false);
+  if (off + 6 + signingIdLen + 1 > buf.byteLength) return buf.byteLength;
+  const signingId = decodeString(buf, off + 6, signingIdLen);
+  let pos = off + 6 + signingIdLen + 1; // +1 for truncated flag
+
+  if (pos + 2 > buf.byteLength) return buf.byteLength;
+  const teamIdLen = view.getUint16(pos, false);
+  if (pos + 2 + teamIdLen + 1 > buf.byteLength) return buf.byteLength;
+  const teamId = decodeString(buf, pos + 2, teamIdLen);
+  pos = pos + 2 + teamIdLen + 1; // +1 for truncated flag
+
+  if (pos + 2 > buf.byteLength) return buf.byteLength;
+  const cdhashLen = view.getUint16(pos, false);
+  if (pos + 2 + cdhashLen > buf.byteLength) return buf.byteLength;
+  const cdhashBytes = buf.subarray(pos + 2, pos + 2 + cdhashLen);
+  const cdhash = Array.from(cdhashBytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+
+  event.identity = { signerType, signingId, teamId, cdhash };
+  return pos + 2 + cdhashLen;
 }
 
 // --- Trailer ---

@@ -18,6 +18,7 @@ function makeEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
     text: [],
     attributes: [],
     arguments: [],
+    identity: null,
     ...overrides,
   };
 }
