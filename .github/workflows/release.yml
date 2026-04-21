@@ -29,8 +29,8 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Run tests
-        run: bun test
+      - name: Run tests with coverage
+        run: bun test --coverage
 
   build:
     name: Build
