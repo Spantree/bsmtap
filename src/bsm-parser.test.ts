@@ -325,6 +325,59 @@ function arg64Token(argNum: number, value: number, desc: string): Uint8Array {
   return concat(bsm(0x71, argNum, ["u64", value]), bsmString(desc));
 }
 
+/**
+ * Build an AUT_DATA token (0x21).
+ * Format: token_id(1) + how_to_print(1) + basic_unit(1) + unit_count(1) + data(variable)
+ * Unit sizes: 0=byte(1), 1=short(2), 2=int32(4), 3=int64(8)
+ */
+function dataToken(howToPrint: number, basicUnit: number, unitCount: number, data: Uint8Array): Uint8Array {
+  return concat(bsm(0x21, howToPrint, basicUnit, unitCount), data);
+}
+
+/** Build an AUT_IN_ADDR token (0x2a). Format: token_id(1) + ipv4_addr(4) */
+function inAddrToken(a: number, b: number, c: number, d: number): Uint8Array {
+  return bsm(0x2a, a, b, c, d);
+}
+
+/**
+ * Build an AUT_IDENTITY token (0xed).
+ * Format: token_id(1) + signer_type(4) + signing_id_len(2) + signing_id(n) +
+ *         signing_id_truncated(1) + team_id_len(2) + team_id(n) +
+ *         team_id_truncated(1) + cdhash_len(2) + cdhash(n)
+ */
+function identityToken(opts: {
+  signerType?: number;
+  signingId?: string;
+  teamId?: string;
+  cdhash?: Uint8Array;
+}): Uint8Array {
+  const signerType = opts.signerType ?? 0;
+  const signingId = opts.signingId ?? "";
+  const teamId = opts.teamId ?? "";
+  const cdhash = opts.cdhash ?? new Uint8Array(20);
+
+  const signingIdEncoded = new TextEncoder().encode(signingId);
+  const signingIdLen = signingIdEncoded.byteLength + 1; // include NUL
+  const signingIdBuf = new Uint8Array(signingIdLen);
+  signingIdBuf.set(signingIdEncoded);
+
+  const teamIdEncoded = new TextEncoder().encode(teamId);
+  const teamIdLen = teamIdEncoded.byteLength + 1;
+  const teamIdBuf = new Uint8Array(teamIdLen);
+  teamIdBuf.set(teamIdEncoded);
+
+  return concat(
+    bsm(0xed, ["u32", signerType], ["u16", signingIdLen]),
+    signingIdBuf,
+    bsm(0), // signing_id_truncated
+    bsm(["u16", teamIdLen]),
+    teamIdBuf,
+    bsm(0), // team_id_truncated
+    bsm(["u16", cdhash.byteLength]),
+    cdhash,
+  );
+}
+
 /** Build a record with header64 (0x74). */
 function buildRecord64(eventType: number, ...tokens: Uint8Array[]): Uint8Array {
   // Header64: 1(id) + 4(size) + 1(ver) + 2(event) + 2(mod) + 8(sec) + 8(usec) = 26
@@ -737,6 +790,145 @@ describe("parseRecord", () => {
     const record = buildRecord(180, emptyPath, returnToken(0, 0));
     const event = parseRecord(record);
     expect(event.paths).toEqual([""]);
+  });
+
+  // --- AUT_DATA (0x21) ---
+
+  test("parses record containing AUT_DATA with byte units", () => {
+    const data = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
+    const record = buildRecord(
+      180,
+      subjectToken({ pid: 1234 }),
+      dataToken(3, 0, 4, data), // hex print, byte unit, 4 bytes
+      returnToken(0, 0),
+    );
+    const event = parseRecord(record);
+    expect(event.event).toBe("execve(2)");
+    expect(event.subject!.pid).toBe("1234");
+    expect(event.return!.errval).toBe("success");
+  });
+
+  test("parses record containing AUT_DATA with int32 units", () => {
+    const data = bsm(["u32", 42], ["u32", 99]);
+    const record = buildRecord(
+      180,
+      subjectToken({ pid: 5678 }),
+      dataToken(2, 2, 2, data), // decimal print, int32 unit, 2 items
+      pathToken("/usr/bin/ls"),
+      returnToken(0, 0),
+    );
+    const event = parseRecord(record);
+    expect(event.paths).toEqual(["/usr/bin/ls"]);
+    expect(event.return!.errval).toBe("success");
+  });
+
+  test("parses record containing AUT_DATA with short units", () => {
+    const data = bsm(["u16", 1], ["u16", 2], ["u16", 3]);
+    const record = buildRecord(
+      180,
+      dataToken(2, 1, 3, data), // decimal print, short unit, 3 items
+      returnToken(0, 0),
+    );
+    const event = parseRecord(record);
+    expect(event.return!.errval).toBe("success");
+  });
+
+  test("parses record containing AUT_DATA with int64 units", () => {
+    const data = bsm(["u64", 0xdeadbeef]);
+    const record = buildRecord(
+      180,
+      dataToken(3, 3, 1, data), // hex print, int64 unit, 1 item
+      returnToken(0, 42),
+    );
+    const event = parseRecord(record);
+    expect(event.return!.retval).toBe("42");
+  });
+
+  // --- AUT_IN_ADDR (0x2a) ---
+
+  test("parses record containing AUT_IN_ADDR", () => {
+    const record = buildRecord(
+      180,
+      subjectToken({ pid: 1234 }),
+      inAddrToken(10, 0, 1, 5),
+      returnToken(0, 0),
+    );
+    const event = parseRecord(record);
+    expect(event.subject!.pid).toBe("1234");
+    expect(event.return!.errval).toBe("success");
+  });
+
+  // --- AUT_IDENTITY (0xed) ---
+
+  test("parses record containing AUT_IDENTITY", () => {
+    const cdhash = new Uint8Array([
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+      0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+    ]);
+    const record = buildRecord(
+      180,
+      subjectToken({ pid: 1234 }),
+      identityToken({
+        signerType: 3,
+        signingId: "com.apple.ls",
+        teamId: "ABCDE12345",
+        cdhash,
+      }),
+      returnToken(0, 0),
+    );
+    const event = parseRecord(record);
+    expect(event.event).toBe("execve(2)");
+    expect(event.subject!.pid).toBe("1234");
+    expect(event.identity).not.toBeNull();
+    expect(event.identity!.signerType).toBe(3);
+    expect(event.identity!.signingId).toBe("com.apple.ls");
+    expect(event.identity!.teamId).toBe("ABCDE12345");
+    expect(event.identity!.cdhash).toBe("0102030405060708090a0b0c0d0e0f1011121314");
+    expect(event.return!.errval).toBe("success");
+  });
+
+  test("parses AUT_IDENTITY with empty signing ID and team ID", () => {
+    const cdhash = new Uint8Array(20); // all zeros
+    const record = buildRecord(
+      180,
+      identityToken({ signerType: 0, signingId: "", teamId: "", cdhash }),
+      returnToken(0, 0),
+    );
+    const event = parseRecord(record);
+    expect(event.identity).not.toBeNull();
+    expect(event.identity!.signerType).toBe(0);
+    expect(event.identity!.signingId).toBe("");
+    expect(event.identity!.teamId).toBe("");
+  });
+
+  // --- Realistic macOS execve record with all three new tokens ---
+
+  test("parses realistic macOS execve record with data, identity, and other tokens", () => {
+    const cdhash = new Uint8Array(20).fill(0xab);
+    const record = buildRecord(
+      180, // execve(2)
+      subjectToken({ pid: 42, uid: 501 }),
+      execArgsToken("/usr/bin/ls", "-la"),
+      dataToken(3, 0, 2, new Uint8Array([0x01, 0x02])), // AUT_DATA
+      pathToken("/usr/bin/ls"),
+      attrToken(0o100755, 0, 0, 16777220, 12345678, 16777220),
+      identityToken({
+        signerType: 3,
+        signingId: "com.apple.ls",
+        teamId: "",
+        cdhash,
+      }),
+      returnToken(0, 0),
+    );
+    const event = parseRecord(record);
+    expect(event.event).toBe("execve(2)");
+    expect(event.subject!.pid).toBe("42");
+    expect(event.execArgs).toEqual(["/usr/bin/ls", "-la"]);
+    expect(event.paths).toEqual(["/usr/bin/ls"]);
+    expect(event.attributes).toHaveLength(1);
+    expect(event.identity).not.toBeNull();
+    expect(event.identity!.signingId).toBe("com.apple.ls");
+    expect(event.return!.errval).toBe("success");
   });
 
   test("survives exec_args with count exceeding buffer", () => {
