@@ -22,6 +22,8 @@ export interface AuditEvent {
   attributes: AuditAttribute[];
   /** Argument tokens (syscall arguments). */
   arguments: AuditArgument[];
+  /** Code signing identity from AUT_IDENTITY token (macOS). */
+  identity: AuditIdentity | null;
 }
 
 export interface AuditSubject {
@@ -63,6 +65,17 @@ export interface AuditArgument {
   argNum: string;
   value: string;
   desc: string;
+}
+
+export interface AuditIdentity {
+  /** Signer type (e.g., 0=unsigned, 3=Apple system). */
+  signerType: number;
+  /** Code signing identifier (e.g., "com.apple.ls"). */
+  signingId: string;
+  /** Team identifier (e.g., "ABCDE12345"). */
+  teamId: string;
+  /** Code directory hash, hex-encoded. */
+  cdhash: string;
 }
 
 /** Writer interface for pluggable output sinks. */
