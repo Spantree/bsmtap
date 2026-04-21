@@ -183,7 +183,7 @@ export function parseRecord(buf: Uint8Array): AuditEvent {
           offset = parseText(view, offset, buf, event);
           break;
         case AUT_DATA:
-          offset = parseData(view, offset);
+          offset = parseData(view, offset, buf);
           break;
         case AUT_IN_ADDR:
           offset = offset + 4;
@@ -396,12 +396,15 @@ function parseExecArgs(view: DataView, off: number, buf: Uint8Array, event: Audi
 
 const DATA_UNIT_SIZES = [1, 2, 4, 8] as const;
 
-function parseData(view: DataView, off: number): number {
+function parseData(view: DataView, off: number, buf: Uint8Array): number {
   // how_to_print(1) + basic_unit(1) + unit_count(1) + data(variable)
   const basicUnit = view.getUint8(off + 1);
   const unitCount = view.getUint8(off + 2);
+  // Fallback to 1-byte units for unrecognized basicUnit values (defensive)
   const unitSize = DATA_UNIT_SIZES[basicUnit] ?? 1;
-  return off + 3 + unitCount * unitSize;
+  const end = off + 3 + unitCount * unitSize;
+  if (end > buf.byteLength) return buf.byteLength;
+  return end;
 }
 
 // --- Argument parsers ---
@@ -460,17 +463,20 @@ function readAttrFields(view: DataView, off: number, devSize: number): AuditAttr
 function parseIdentity(view: DataView, off: number, buf: Uint8Array, event: AuditEvent): number {
   // signer_type(4) + signing_id_len(2) + signing_id(n) + truncated(1) +
   // team_id_len(2) + team_id(n) + truncated(1) + cdhash_len(2) + cdhash(n)
+  if (off + 6 > buf.byteLength) return buf.byteLength;
   const signerType = view.getUint32(off, false);
   const signingIdLen = view.getUint16(off + 4, false);
-  if (off + 6 + signingIdLen > buf.byteLength) return buf.byteLength;
+  if (off + 6 + signingIdLen + 1 > buf.byteLength) return buf.byteLength;
   const signingId = decodeString(buf, off + 6, signingIdLen);
   let pos = off + 6 + signingIdLen + 1; // +1 for truncated flag
 
+  if (pos + 2 > buf.byteLength) return buf.byteLength;
   const teamIdLen = view.getUint16(pos, false);
-  if (pos + 2 + teamIdLen > buf.byteLength) return buf.byteLength;
+  if (pos + 2 + teamIdLen + 1 > buf.byteLength) return buf.byteLength;
   const teamId = decodeString(buf, pos + 2, teamIdLen);
   pos = pos + 2 + teamIdLen + 1; // +1 for truncated flag
 
+  if (pos + 2 > buf.byteLength) return buf.byteLength;
   const cdhashLen = view.getUint16(pos, false);
   if (pos + 2 + cdhashLen > buf.byteLength) return buf.byteLength;
   const cdhashBytes = buf.subarray(pos + 2, pos + 2 + cdhashLen);
