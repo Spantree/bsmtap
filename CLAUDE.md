@@ -16,7 +16,7 @@ BSM-to-JSON streaming daemon — taps macOS OpenBSM audit events from `/dev/audi
 Run all three CI checks before pushing:
 
 ```sh
-bun run lint:ci && bun run typecheck && bun test
+bun run lint:ci && bun run typecheck && bun test --coverage
 ```
 
 ## Code style
