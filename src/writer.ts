@@ -12,7 +12,16 @@ export class JsonLineFileWriter implements Writer {
   }
 
   open(): void {
-    this.fd = openSync(this.outputPath, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND);
+    try {
+      this.fd = openSync(this.outputPath, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND);
+    } catch (err: unknown) {
+      const code = err instanceof Error && "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
+      if (code === "ENOENT") {
+        const dir = this.outputPath.replace(/\/[^/]*$/, "");
+        throw new Error(`Output directory does not exist: ${dir}`);
+      }
+      throw err;
+    }
     this.writePidFile();
   }
 
@@ -38,7 +47,16 @@ export class JsonLineFileWriter implements Writer {
     if (this.fd !== null) {
       closeSync(this.fd);
     }
-    this.fd = openSync(this.outputPath, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND);
+    try {
+      this.fd = openSync(this.outputPath, constants.O_WRONLY | constants.O_CREAT | constants.O_APPEND);
+    } catch (err: unknown) {
+      const code = err instanceof Error && "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
+      if (code === "ENOENT") {
+        const dir = this.outputPath.replace(/\/[^/]*$/, "");
+        throw new Error(`Output directory does not exist: ${dir}`);
+      }
+      throw err;
+    }
     console.error("[bsmtap] Reopened output file after rotation");
   }
 
