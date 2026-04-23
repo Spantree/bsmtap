@@ -1,6 +1,6 @@
 {
   "name": "bsmtap",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "BSM-to-JSON streaming daemon — taps macOS OpenBSM audit events into structured JSON Lines",
   "type": "module",
   "license": "MIT",
